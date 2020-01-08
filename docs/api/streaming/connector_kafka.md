@@ -91,10 +91,68 @@ env.enableCheckpointing(5000) // checkpoint every 5000 msecs
 
 #### 分区
 
+Flink Kafka Consumer支持发现动态创建的Kafka分区，并使用一次精确的保证来使用它们。 在最初检索分区元数据后（即，当作业开始运行时）发现的所有分区
+将从最早的偏移量开始消耗。
+
+默认情况下，禁用分区发现。要启用它，请在提供的属性配置中为flink.partition-discovery.interval-millis设置一个非负值，表示发现间隔（以毫秒为单位）。
+
+
 #### 主题
 
 ### Kafka消费者偏移量提交配置
 
+Flink Kafka Consumer可以配置如何将偏移量提交回Kafka broker（或0.8中的Zookeeper）的行为。 请注意，Flink Kafka Consumer不依靠承诺的偏移量
+来提供容错保证。 承诺的偏移量仅是出于监视目的公开用户进度的一种方式。
+
+根据是否为作业启动checkpoint，将配置偏移量提交行为的方式分为两种：
+* Checkpointing disabled: 如果禁用了检查点，则Flink Kafka使用者将依赖内部使用的Kafka客户端的自动定期偏移量提交功能。 因此，要禁用或启用偏移
+提交，只需在提供的“属性”配置中将enable.auto.commit（或对于Kafka 0.8为auto.commit.enable）/ auto.commit.interval.ms键设置为适当的值。
+* Checkpointing enabled: 如果启用了检查点，则Flink Kafka Consumer将在检查点完成时提交存储在检查点状态中的偏移量。 这样可以确保Kafka代理中
+的已提交偏移量与检查点状态中的偏移量一致。 用户可以通过在使用者上调用setCommitOffsetsOnCheckpoints（boolean）方法来选择禁用或启用偏移提交
+（默认情况下，此行为为true）。 请注意，在这种情况下，将完全忽略“属性”中的自动定期偏移提交设置。
+
+### Kafka消费者和时间戳提取及水印发出
+
+在许多情况下，记录的时间戳（显式或隐式地）嵌入到记录本身中。 另外，用户可能想要周期性地或以不规则的方式（例如，水印）发出水印。 基于Kafka流中包含当前
+事件时间水印的特殊记录。 对于这些情况，Flink Kafka Consumer允许指定AssignerWithPeriodicWatermarks或AssignerWithPunctuatedWatermarks。
+
+## Kafka Producer
+
+代码举例：
+```scala
+val stream: DataStream[String] = ...
+
+val myProducer = new FlinkKafkaProducer011[String](
+        "localhost:9092",         // broker list
+        "my-topic",               // target topic
+        new SimpleStringSchema)   // serialization schema
+
+// versions 0.10+ allow attaching the records' event timestamp when writing them to Kafka;
+// this method is not available for earlier Kafka versions
+myProducer.setWriteTimestampToKafka(true)
+
+stream.addSink(myProducer)
+```
+
+上面的示例演示了创建Flink Kafka Producer将流写入单个Kafka目标主题的基本用法。 对于更高级的用法，还有其他构造函数变体可以提供以下功能：
+* 提供自定义属性：生产者允许为内部KafkaProducer提供自定义属性配置。 
+* 自定义分区程序：要将记录分配给特定分区，可以向构造函数提供FlinkKafkaPartitioner的实现。 将为流中的每条记录调用此分区程序，以确定应将记录发送
+到目标主题的确切分区。
+* 高级序列化方案：类似于使用者，生产者还允许使用称为KeyedSerializationSchema的高级序列化方案，该方案允许分别对键和值进行序列化。 它还允许覆盖
+目标主题，以便一个生产者实例可以将数据发送到多个主题。
+
+### 生产者分区方案
+
+默认情况下，如果未为Flink Kafka Producer指定自定义分区程序，则生产程序将使用FlinkFixedPartitioner将每个Flink Kafka Producer并行子任务
+映射到单个Kafka分区（即，接收器子任务收到的​​所有记录最终都将在 相同的Kafka分区）。
+
+可以通过扩展FlinkKafkaPartitioner类来实现自定义分区程序。 所有Kafka版本的构造函数都允许在实例化生产者时提供自定义分区程序。 请注意，分区器实现
+必须是可序列化的，因为它们将在Flink节点之间传输。 另外，请记住，由于作业失败，分区器中的任何状态都将丢失，因为分区器不是生产者检查点状态的一部分。
+
+也可以完全避免使用某种分区程序，只需让Kafka通过其附加键（使用提供的序列化模式为每条记录确定）对已写记录进行分区即可。 为此，请在实例化生产者时提供一
+个空的自定义分区程序。 提供null作为自定义分区很重要； 如上所述，如果未指定自定义分区程序，则使用FlinkFixedPartitioner。
+
+### Kafka生产者和容错机制
 
 
 

@@ -38,6 +38,8 @@ object KafkaSourceTest2 {
         val stream = env
             .addSource(consumer)
             .print()
+
+        env.execute("KafkaSourceTest2")
     }
 
 }
