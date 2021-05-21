@@ -26,7 +26,7 @@
         <guava.version>16.0</guava.version>
         <fastjson.version>1.2.47</fastjson.version>
         <commons-lang3.version>3.4</commons-lang3.version>
-        <flink.version>1.9.0</flink.version>
+        <flink.version>1.9.2</flink.version>
     </properties>
 
     <dependencyManagement>
